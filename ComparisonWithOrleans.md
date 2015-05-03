@@ -2,37 +2,49 @@
 
 ## Step-By-Step Review
 
-This overview walks along the Technical Report [MSR-TR-2014-41](http://research.microsoft.com/apps/pubs/default.aspx?id=210931) by *Philip A. Bernstein, Sergey Bykov, Allan Geller, Cabriel Kliot, Jorgen Thelin (Microsoft Research)*, for another comparison focusing on Erlang and Riak see [Christopher Meiklejohn’s excellent article](http://christophermeiklejohn.com/orleans.html).
+This overview walks along the Technical Report [MSR-TR-2014-41](http://research.microsoft.com/apps/pubs/default.aspx?id=210931) by *Philip A. Bernstein, Sergey Bykov, Allan Geller, Gabriel Kliot, Jorgen Thelin (Microsoft Research)*, for another comparison focusing on Erlang and Riak see [Christopher Meiklejohn’s article](http://christophermeiklejohn.com/orleans.html).
+
+Thanks to Gabriel Kliot for reviewing and providing additional insight, this text would be a lot less accurate without his help.
 
 ### Introduction
 
-Different focus:
+The most interesting aspect in this section is the difference in primary focus between the two projects:
 
-  * Akka as a toolkit for building distributed systems, offering the full power but also exposing the inherent essential complexity.
+  * The primary focus of Orleans is to simplify distributed computing and allow non-experts to write efficient, scalable and reliable distributed services.
   
-  * Orleans restricts applicability in order to allow seamless use without understanding distributed computing.
+  * Akka is a toolkit for building distributed systems, offering the full power but also exposing the inherent complexity of this domain.
+
+Both projects intend to be complete solutions, meaning that Orleans’ second priority is to allow experienced users to control the platform in more detail and adapt it to a wide range of use-cases, while Akka also raises the level of abstraction and offers simplified but very useful abstraction.
+
+Another difference is that of design methodology:
+
+  * The guiding question for Orleans is “what is the default behavior that is most natural and easy for non-experts?” The second question is then how the expert can make their own decision.
+  
+  * Akka’s guiding question is “what is the minimal abstraction that we can provide without compromises?” This means that “good default” for us is not driven by what users might expect, but what we think users will find most useful for reasoning about their program once they have understood the abstraction—familiarity is not a goal in itself.
   
 #### Lifecycle
 
   * Orleans Grains do not have a lifecycle, can neither be started nor stopped. Consequently they also cannot fail and be restarted, therefore Orleans does not offer tools for software failure handling—the failure handling aspects concentrate on recovering from hardware crashes.
   
+    On the other hand Grain _Activations_ do have a lifecycle and corresponding lifecycle hooks that can be used by the programmer to react to activation or deactivation.
+  
   * Akka Actors implement the full model including defined lifecycle beginning and end, these are explicit operations. Persistent Actors support extending the lifecycle of a logical unit of computation beyond the lifecycle of the running process instance. Restarting an Actor provides powerful means for automatic service recovery.
   
 #### Automatic Creation
 
-  * Orleans Grains are created automatically whenever needed, which implies that initialization activities cannot have persistent effects—otherwise these would be uncontrollable. OTOH this frees the user from having to consider the need for Grain creation. It also means that asking for a Grain you don’t know which implementation you will get.
+  * Orleans Grains are created automatically whenever needed, which implies that Activation initialization should be careful in the externally visible effects it has—initialization activities with persistent effects should be made explicit interface methods that are invoked by the client. The automatic creation frees the user from having to consider the need for Grain creation.
   
   * Akka actors are explicitly created by their parent, implementing mandatory parental supervision. This allows precise control over when initialization actions are performed and which exact actor class is being created.
   
 #### Virtual Actor Space
 
-  * In Orleans each type of Grain corresponds to a practically infinite space of Grain instances that conceptually all exist from the beginning of the universe to its end. The relation to the physical Actors that implement the Grains is explained similar to virtual and physical memory, but this comparison is misleading since the virtual address space of a process is explicitly populated with the desired contents instead of containing the whole system’s information by default.
+  * In Orleans each type of Grain corresponds to a practically infinite space of Grain instances that conceptually all exist from the beginning of the universe to its end. The relation to the physical Actors that implement the Grains is explained similar to virtual and physical memory, where swapping in and out corresponds to activation/deactivation of Grain (in other respects the analogy does not hold, like in that all Grains of a given type exist always whereas virtual memory needs to be mapped explicitly).
   
   * Akka’s explicit lifecycle management requires that all currently running Actors must have been explicitly started in the past and will have to be explicitly stopped in the future. Higher-level abstractions like ClusterSharding provide the ability to opt into an Orleans-like model where instances can be addressed by their logical name instead of a concrete ActorRef, but the API for accessing them is provided by other Actors that perform the necessary lookups and initialization on behalf of the user.
 
 #### Automatic Actor Placement and Load Balancing
 
-  * Orleans Grains are deployed on silos that can span multiple cluster nodes and the user has no influence on their precise placement or load-dependent movement. This means that making use of elastically provisioned resources is fully automatic and built into the model.
+  * Orleans Grains are deployed on silos that can span multiple cluster nodes and the user has no direct influence on their precise placement or load-dependent movement. This means that making use of elastically provisioned resources is fully automatic and built into the model.
   
   * Elastic deployment and load balancing are features that Akka users opt into by using ClusterSharding or cluster-aware routers with remote deployment. Otherwise Actors are created explicitly on a given node (this can be influenced using the configuration file in order to allow deployment decisions to be taken by the operations personnel and not the programmer).
   
@@ -40,7 +52,7 @@ Different focus:
 
 #### Virtual Actors
 
-  * Orleans Grains are identified by their nominal type and a 128-bit GUID.
+  * Orleans Grains are identified by their nominal type and a 128-bit GUID, by a long, by a String, or by a combination of the three.
   
   * Akka Actors are identified by their ActorRef, which consists of the ActorPath (including physical network location and the names of all its ancestors) and its UID (a 32-bit integer that disambiguates different incarnations on the same ActorPath).
 
@@ -52,7 +64,7 @@ discussed above
 
 ##### Automatic Instantiation
 
-  * An Orleans Grain may at any given time have one or more activations (active instances) depending on deployment mode. This implies that stateful Grains will have to consider that there may be copies running outside of their control that are responsible for the same piece of data or functionality if automatic scale-out is enabled (see below).
+  * An Orleans Grain may at any given time have one or more activations (active instances) depending on deployment mode: if automatic scale-out (see below) is enabled for a Grain type then the programmer will have to consider that there may be multiple copies running with the same identifier.
   
   * An Akka ActorRef refers to an Actor that must have been previously instantiated (otherwise there would not be an ActorRef but only an ActorPath available) and that may have already terminated. There will never be two Actors running with the same ActorRef. When using ClusterSharding there can be exactly zero or one instances currently running for each logical Actor name at any given point in time (unless the user explicitly configures the cluster to tolerate operation under split-brain scenarios).
 
@@ -60,7 +72,7 @@ see also above
 
 ##### Location Transparency
 
-  * An Orleans Grain does not have knowledge of its physical location which can also transparently change during the runtime of the system. Users of a Grain’s function do not need to know the location of the Grain activation they are talking to. If my understanding is right then Grain handles can also be sent as part of messages.
+  * An Orleans Grain does not have knowledge of its physical location which can also transparently change during the runtime of the system. Users of a Grain’s function do not need to know the location of the Grain activation they are talking to. Grain references can also be sent as part of messages or persisted.
   
   * In Akka the central abstraction for Location Transparency is the ActorRef: it is a self-contained serializable representation of an Actor location that enables other Actors to send messages to it. ActorRefs can also be sent as part of messages to introduce Actors to one another.
   
@@ -126,7 +138,7 @@ Both systems consist of similar core components: Orleans’ Execution correspond
   
   * Akka uses a sharding approach where the hash space of the logical Actor names is partitioned into shards of equal size and a ClusterSingleton coordinates the placement of these shards onto cluster nodes.
 
-While Orleans’ Hosting has the ability to relocate individual Actors, it must pay for this ability by a hash table that grows proportionally to the number of Grains used. Akka’s hash-based approach in contrast distributes the full location information (on an as-needed basis) because its size is bounded by the configurable number of shards, which allows it to scale further than Orleans in the number of Actors that are running.
+While Orleans’ Hosting has the ability to relocate individual Actors, it must pay for this ability by a hash table that grows with the number of Grains used (though there are mechanisms to compact it when needed). Akka’s hash-based approach in contrast distributes the full location information (on an as-needed basis) because its size is bounded by the configurable number of shards, which allows it to scale further than Orleans in the number of Actors that are running; the price here is that individual Actor placement is not possible.
 
 #### Strong Isolation
 
@@ -164,11 +176,13 @@ This section describes in some detail how Orleans’ Hosting works, which is not
 
 #### Messaging Guarantees
 
-  * Orleans guarantees *at-least-once* semantics by implementing retransmission until acknowledged, but it does not include sequence numbers to ensure per-pair message ordering, meaning that invocations to a Grain that are issued without waiting for the reply of each previous one before sending the next may be received out of order by that Grain.
+  * Orleans guarantees *at-most-once* semantics, but it does not include sequence numbers to ensure per-pair message ordering, meaning that invocations to a Grain that are issued without waiting for the reply of each previous one before sending the next may be received out of order by that Grain.
   
-  * Akka offers the bare minimum *at-most-once* guarantees for normal Actor message sends but includes opt-in support for *at-least-once* semantics (based on Persistence in order to achieve true *at-least-once* even when machines fail). On the other hand Akka does guarantee message ordering between each sender–recipient pair.
-  
-It is interesting to see how all implementation and the model differ so greatly in this basic choice, Erlang provides neither resends nor ordering while the Actor Model by Carl Hewitt postulates *exactly-once* messaging   without ordering guarantees.
+  * Akka also offers *at-most-once* guarantees for normal Actor message sends (non-persistent exactly-once for supervision notifications) and does guarantee message ordering between each sender–recipient pair.
+
+Both systems include opt-in support for *at-least-once* semantics with the inherent caveat that the recipient may receive duplicate messages—none of them include de-duplication.
+
+It is interesting to see how all implementation and the model differ in this basic choice, Erlang provides neither resends nor ordering while the Actor Model by Carl Hewitt postulates *exactly-once* messaging   without ordering guarantees.
 
 ## Summary and Interpretation
 
