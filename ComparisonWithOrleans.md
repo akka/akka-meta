@@ -92,11 +92,11 @@ In this area the differences between Akka and Orleans are very pronounced and mi
 
 Another consequence of using interface methods for messaging is that all interactions default to the request–response pattern whereas explicit messaging naturally allows more streamlined message flows through multiple stations. On the other hand using method calls for communication makes it very natural to propagate errors via exceptions back to the calling client, a technique that is familiar to traditional OO developers.
 
-This highlights one notable difference between Akka and Orleans:
+This highlights one notable difference between Akka and Orleans concerning [failures and errors](http://www.reactivemanifesto.org/glossary#Failure):
 
-  * Orleans Actors do not distinguish between failures and errors (see [the Reactive Manifesto](http://www.reactivemanifesto.org/glossary#Failure) for a definition), all exceptions are communicated “horizontally” back to the client.
+  * Orleans considers exceptions that are thrown from a Grain’s processing logic as *errors* and signal them back to the client.
 
-  * Akka Actors separate between failures that are communicated to and handled by the supervisor, and errors that are normal messages that get sent back to clients. Exceptions are not used for expressing error conditions in Akka.
+  * Akka considers exceptions emanating from the Actor as *failures* and sends them to the supervisor to be handled. This means that errors are signaled via explicitly modeled objects within the normal message protocol instead of using exceptions for this purpose.
 
 #### Actor References
 
