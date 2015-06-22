@@ -1,6 +1,6 @@
 # The akka/akka Gitter Channel
 
-This channel is available for all Akka enthusiastsâ€”newbies as well as gurusâ€”for the exchange of knowledge and the coordination of efforts around Akka; it is a community effort and resource and not backed by Typesafe. For more structured discussions please refer to [the akka-user mailing list](https://groups.google.com/forum/#!forum/akka-user).
+This channel is available for all Akka enthusiasts—newbies as well as gurus—for the exchange of knowledge and the coordination of efforts around Akka; it is a community effort and resource and not backed by Typesafe. For more structured discussions please refer to [the akka-user mailing list](https://groups.google.com/forum/#!forum/akka-user).
 
 Instead of a long Code of Conduct we rely upon common sense: be kind and respectful to those who are already here and to those who come after you, harassment of any kind will not be tolerated; in case of trouble contact [akka.official](mailto:akka.official@gmail.com).
 
